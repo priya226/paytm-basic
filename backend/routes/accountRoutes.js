@@ -26,8 +26,8 @@ router.route('/transferMoney').post(outhhandler,async(req,res)=>{
         if(!account || account.balance<amount){
             await session.abortTransaction();
             return res.status(500).json({error:'invalid account or insufficient balance'})
-        }else{
-            let userId = new ObjectId(req.id);
+        }else{//check user exists or not
+            let userId = new ObjectId(touserid);
             const user = await accountModel.findOne({userId:userId}).session(session);
             console.log("user",user)
             if(!user){

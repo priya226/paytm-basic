@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken'
 import jwtsecret from '../config.js';
 import { outhhandler } from "../middleware.js";
 import accountModel from "../model/accountModel.js";
+import mongoose from "mongoose";
 
 const router = express.Router();
 const userzodSignupSchema = zod.object({
@@ -33,23 +34,27 @@ router.route('/signup').post(async (req,res)=>{
     }
     try{
         const user =await userModel.findOne({username:body.username});
-        // console.log(user)
+        console.log('user already exist check Please sign in');
         if(user)
         { return  res.status(411).send({message:"user already exist"})
         }
         else{
             const createuser = await userModel.create(req.body);
-            // console.log(createuser);
+            console.log('user created');
             const token = jwt.sign({
                            userid:  createuser._id
                            },jwtsecret,{expiresIn:'3d'})
             // console.log(token);
-            const account = await accountModel.create({
-                                                 userId:createuser._id,
-                                                 balance:1+Math.random()*1000
-                                                        });
+            // const account = await accountModel.create({
+            //                                      userId:createuser._id,
+            //                                      balance:1+Math.random()*1000
+            //                                             });
+
             // console.log(account);
-                   return res.status(200).json({message:'succefully created user',token:token,balance:`${account.balance} is added to you wallet Congratulations!`})
+            console.log('before createAccountForuser')
+            await createAccountForuser(createuser._id);
+            console.log('after createAccountForuser')
+            return res.status(200).json({message:'succefully created user',token:token})
           }
     }catch(err){
         return  res.status(411).send({error:err})
@@ -130,19 +135,43 @@ router.route('/bulk').get(outhhandler,async(req,res)=>{
     }
 })
 
-router.route('/fetchAccount').get(outhhandler,async(req,res)=>{
+// router.route('/fetchAccount').get(outhhandler,async(req,res)=>{
+//     try{
+//         // console.log(req.id)
+//         const userId = ObjectId(req.id);
+//         console.log(userId)
+//         const accounts = await accountModel.find({userId:userId});
+//         console.log(accounts)
+//         res.status(200).json({
+//                             message:'account fetched succefully',
+//                             data:accounts.map(ac=>ac._id)});
+//     }catch(err){
+//         res.status(500).json({error:err})
+//     }
+// })
+const createAccountForuser = async (userId)=>{
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    let balance=1+Math.random()*1000
     try{
-        // console.log(req.id)
-        const userId = ObjectId(req.id);
-        console.log(userId)
-        const accounts = await accountModel.find({userId:userId});
-        console.log(accounts)
-        res.status(200).json({
-                            message:'account fetched succefully',
-                            data:accounts.map(ac=>ac._id)});
+        const account = new accountModel({userId:userId,
+          balance:balance
+        });
+        account.save({session});
+        console.log('account save');
+        const user = await userModel.updateOne(
+            {_id:userId},
+            {$push:{accounts:account._id}},
+            {session})
+        console.log('user updated')
+        await session.commitTransaction();
+        console.log('New account created and linked to user.')
     }catch(err){
-        res.status(500).json({error:err})
+        await session.abortTransaction();
+        console.error('Error creating account and linking to user:', err);
+    }finally{
+        console.log('reached finally')
+        await session.endSession();
     }
-})
-
+}
 export default router;
